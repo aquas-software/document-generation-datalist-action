@@ -18,6 +18,18 @@
                 "required": "True"
             },
             {
+                "name": "buttonLabel",
+                "label": "@@datalist.DocumentGenerationDatalistAction.buttonLabel@@",
+                "type": "textfield",
+                "required": "True"
+            },
+            {
+                "name": "fileName",
+                "label": "@@datalist.DocumentGenerationDatalistAction.fileName@@",
+                "type": "textfield",
+                "required": "True"
+            },
+            {
                 "label": "@@datalist.DocumentGenerationDatalistAction.imageDimension@@",
                 "type": "header",
                 "description": "@@datalist.DocumentGenerationDatalistAction.imageDimension.desc@@"

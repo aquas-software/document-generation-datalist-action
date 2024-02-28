@@ -78,7 +78,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
     @Override
     public String getLinkLabel() {
-        return getPropertyString("label");
+        return getPropertyString("buttonLabel");
     }
 
     @Override
@@ -157,6 +157,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 String text = paragraph.getText();
                 if (text != null && !text.isEmpty() && text.contains(entry.getKey())) {
                     text = text.replace("${" + entry.getKey() + "}", entry.getValue());
+
                     for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
                         paragraph.removeRun(i);
                     }
@@ -250,6 +251,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                             String text = xwpfParagraph.getText();
                             if (text != null && !text.isEmpty() && text.contains(entry.getKey())) {
                                 text = text.replace("${" + entry.getKey() + "}", entry.getValue());
+
                                 for (int i = xwpfParagraph.getRuns().size() - 1; i >= 0; i--) {
                                     xwpfParagraph.removeRun(i);
                                 }
@@ -280,8 +282,11 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                             for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
                                 paragraph.removeRun(i);
                             }
+                            int width = Integer.parseInt(getPropertyString("imageWidth"));
+                            int height = Integer.parseInt(getPropertyString("imageHeight"));
+
                             XWPFRun newRun = paragraph.createRun();
-                            newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", Units.toEMU(400), Units.toEMU(200));
+                            newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", Units.toEMU(width), Units.toEMU(height));
                             fileInputStream.close();
                         } catch (IOException | InvalidFormatException e) {
                             LogUtil.error(getClassName(), e, "Failed to generate word file");
@@ -370,6 +375,16 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         }
     }
 
+    public static ArrayList<String> getAllMatches(String text, String regex, boolean useCustomGroup) {
+        ArrayList<String> matches = new ArrayList<String>();
+        Matcher m = Pattern.compile("(?=(" + regex + "))").matcher(text);
+        int groupId = useCustomGroup ? 2 : 1;
+        while(m.find()) {
+            matches.add(m.group(groupId));
+        }
+        return matches;
+    }
+
     protected void generateSingleFile(HttpServletRequest request, HttpServletResponse response, String row) {
 
         AppDefinition appDef = AppUtil.getCurrentAppDefinition();
@@ -391,16 +406,19 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
             extractor.close();
 
             //File Text Array & ArrayList (After regex)
-            String[] textArr;
+            //String[] textArr;
             ArrayList<String> textArrayList = new ArrayList<String>();
 
             //Remove all whitespaces in extracted text
-            textArr = text.split("\\s+");
-            for (String x : textArr) {
-                if (x.startsWith("${") && x.endsWith("}")) {
-                    textArrayList.add(x.substring(2, x.length() - 1));
-                }
-            }
+            // textArr = text.split("\\s+");
+            // for (String x : textArr) {
+            //     if (x.startsWith("${") && x.endsWith("}")) {
+            //         textArrayList.add(x.substring(2, x.length() - 1));
+            //     }
+            // }
+
+            //use regex instead of text.split so matches dont have to be enclosed by whitespaces
+            textArrayList = getAllMatches(text, "\\$\\{([^$\\{\\}]+)\\}", true);
 
             //Perform Matching Operation
             Map<String, String> matchedMap = new HashMap<>();
@@ -447,7 +465,10 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
             replaceImageInParagraph(matchedMap, apachDoc, row);
             replaceImageInTable(matchedMap, apachDoc, row);
 
-            writeResponseSingle(request, response, apachDoc, row + ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            String fileName = getPropertyString("fileName");
+            //String fileName = row + ".docx";
+
+            writeResponseSingle(request, response, apachDoc, fileName, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
         } catch (Exception e) {
             LogUtil.error(this.getClassName(), e, e.toString());
@@ -481,16 +502,19 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 extractor.close();
 
                 //File Text Array & ArrayList (After regex)
-                String[] textArr;
-                ArrayList<String> textArrayList = new ArrayList<>();
+                //String[] textArr;
+                ArrayList<String> textArrayList = new ArrayList<String>();
 
                 //Remove all whitespaces in extracted text
-                textArr = text.split("\\s+");
-                for (String x : textArr) {
-                    if (x.startsWith("${") && x.endsWith("}")) {
-                        textArrayList.add(x.substring(2, x.length() - 1));
-                    }
-                }
+                // textArr = text.split("\\s+");
+                // for (String x : textArr) {
+                //     if (x.startsWith("${") && x.endsWith("}")) {
+                //         textArrayList.add(x.substring(2, x.length() - 1));
+                //     }
+                // }
+
+                //use regex instead of text.split so matches dont have to be enclosed by whitespaces
+                textArrayList = getAllMatches(text, "\\$\\{([^$\\{\\}]+)\\}", true);
 
                 //Matching Operation
                 Map<String, String> matchedMap = new HashMap<String, String>();
