@@ -35,16 +35,28 @@
                 "description": "@@datalist.DocumentGenerationDatalistAction.imageDimension.desc@@"
             },
             {
-                "name": "imageWidth",
-                "label": "@@datalist.DocumentGenerationDatalistAction.imageWidth@@",
+                "name": "imageWidthPixels",
+                "label": "@@datalist.DocumentGenerationDatalistAction.imageWidthPixels@@",
                 "type": "textfield",
-                "description": "@@datalist.DocumentGenerationDatalistAction.imageWidth.desc@@"
+                "description": "@@datalist.DocumentGenerationDatalistAction.imageWidthPixels.desc@@"
             },
             {
-                "name": "imageHeight",
-                "label": "@@datalist.DocumentGenerationDatalistAction.imageHeight@@",
+                "name": "imageHeightPixels",
+                "label": "@@datalist.DocumentGenerationDatalistAction.imageHeightPixels@@",
                 "type": "textfield",
-                "description": "@@datalist.DocumentGenerationDatalistAction.imageHeight.desc@@"
+                "description": "@@datalist.DocumentGenerationDatalistAction.imageHeightPixels.desc@@"
+            },
+            {
+                "name": "imageWidthCentimeters",
+                "label": "@@datalist.DocumentGenerationDatalistAction.imageWidthCentimeters@@",
+                "type": "textfield",
+                "description": "@@datalist.DocumentGenerationDatalistAction.imageWidthCentimeters.desc@@"
+            },
+            {
+                "name": "imageHeightCentimeters",
+                "label": "@@datalist.DocumentGenerationDatalistAction.imageHeightCentimeters@@",
+                "type": "textfield",
+                "description": "@@datalist.DocumentGenerationDatalistAction.imageHeightCentimeters.desc@@"
             },
             {
                 "label": "@@datalist.DocumentGenerationDatalistAction.gridCustomisation@@",

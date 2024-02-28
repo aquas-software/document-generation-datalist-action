@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -17,6 +18,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.awt.Dimension;
+
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.FileImageInputStream;
+import javax.imageio.stream.ImageInputStream;
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
@@ -68,7 +75,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
     @Override
     public String getVersion() {
-        return "8.0.1";
+        return "8.0.2";
     }
 
     @Override
@@ -216,7 +223,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 if (getPropertyString("gridDirection").equals("horizontal")){
                     table.getRow(rowIndex).getCell(0).setText(jsonKey);
                 } else if (getPropertyString("gridDirection").equals("vertical")){
-                     table.getRow(0).getCell(rowIndex).setText(jsonKey);
+                    table.getRow(0).getCell(rowIndex).setText(jsonKey);
                 }
                
                 rowIndex++;
@@ -265,6 +272,35 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         }
     }
 
+    /**
+     * Gets image dimensions for given file 
+     * @param imgFile image file
+     * @return dimensions of image
+     * @throws IOException if the file is not a known image
+     */
+    public static Dimension getImageDimension(File imgFile) throws IOException {
+        int pos = imgFile.getName().lastIndexOf(".");
+        if (pos == -1)
+            throw new IOException("No extension for file: " + imgFile.getAbsolutePath());
+        String suffix = imgFile.getName().substring(pos + 1);
+        Iterator<ImageReader> iter = ImageIO.getImageReadersBySuffix(suffix);
+        while(iter.hasNext()) {
+            ImageReader reader = iter.next();
+            try {
+                ImageInputStream stream = new FileImageInputStream(imgFile);
+                reader.setInput(stream);
+                int width = reader.getWidth(reader.getMinIndex());
+                int height = reader.getHeight(reader.getMinIndex());
+                return new Dimension(width, height);
+            } catch (IOException e) {
+                LogUtil.error("getImageDimension", e, "Error reading: " + imgFile.getAbsolutePath());
+            } finally {
+                reader.dispose();
+            }
+        }
+        throw new IOException("Not a known image file: " + imgFile.getAbsolutePath());
+    }
+
     protected void replaceImageInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
 
         for (Map.Entry<String, String> entry : dataParams.entrySet()) {
@@ -282,11 +318,40 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                             for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
                                 paragraph.removeRun(i);
                             }
-                            int width = Integer.parseInt(getPropertyString("imageWidth"));
-                            int height = Integer.parseInt(getPropertyString("imageHeight"));
+                            
+                            double width;
+                            double height;
+
+                            String widthPixelsString = getPropertyString("imageWidthPixels");
+                            String heightPixelsString = getPropertyString("imageHeightPixels");
+                            int widthPixels = Integer.parseInt(0 + widthPixelsString);
+                            int heightPixels = Integer.parseInt(0 + heightPixelsString);
+
+                            String widthCmString = getPropertyString("imageWidthCentimeters").replaceAll(",",".");
+                            String heightCmString = getPropertyString("imageHeightCentimeters").replaceAll(",",".");
+                            double widthCm = Double.parseDouble(0 + widthCmString);
+                            double heightCm = Double.parseDouble(0 + heightCmString);
+
+                            if (widthPixels > 0 && heightPixels > 0) {
+                                //use pixel-values
+                                width = widthPixels * Units.EMU_PER_PIXEL;
+                                height = heightPixels * Units.EMU_PER_PIXEL;
+                            } else if ((int) widthCm > 0 && (int) heightCm > 0) {
+                                //use cm values
+                                width = widthCm * Units.EMU_PER_CENTIMETER;
+                                height = heightCm * Units.EMU_PER_CENTIMETER;
+                            } else {
+                                //use image dimensions from file
+                                Dimension imageDimensions = getImageDimension(file);
+                                width = imageDimensions.getWidth() * Units.EMU_PER_PIXEL;
+                                height = imageDimensions.getHeight() * Units.EMU_PER_PIXEL;
+                            };
+
+                            LogUtil.info(this.getClassName(), "width" + width);
+                            LogUtil.info(this.getClassName(), "height" + height);
 
                             XWPFRun newRun = paragraph.createRun();
-                            newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", Units.toEMU(width), Units.toEMU(height));
+                            newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", (int) width, (int) height);
                             fileInputStream.close();
                         } catch (IOException | InvalidFormatException e) {
                             LogUtil.error(getClassName(), e, "Failed to generate word file");
@@ -316,11 +381,36 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                                         for (int i = xwpfParagraph.getRuns().size() - 1; i >= 0; i--) {
                                             xwpfParagraph.removeRun(i);
                                         }
-                                        int width = Integer.parseInt(getPropertyString("imageWidth"));
-                                        int height = Integer.parseInt(getPropertyString("imageHeight"));
+                                        double width;
+                                        double height;
+
+                                        String widthPixelsString = getPropertyString("imageWidthPixels");
+                                        String heightPixelsString = getPropertyString("imageHeightPixels");
+                                        int widthPixels = Integer.parseInt(0 + widthPixelsString);
+                                        int heightPixels = Integer.parseInt(0 + heightPixelsString);
+
+                                        String widthCmString = getPropertyString("imageWidthCentimeters").replaceAll(",",".");
+                                        String heightCmString = getPropertyString("imageHeightCentimeters").replaceAll(",",".");
+                                        double widthCm = Double.parseDouble(0 + widthCmString);
+                                        double heightCm = Double.parseDouble(0 + heightCmString);
+
+                                        if (widthPixels > 0 && heightPixels > 0) {
+                                            //use pixel-values
+                                            width = widthPixels * Units.EMU_PER_PIXEL;
+                                            height = heightPixels * Units.EMU_PER_PIXEL;
+                                        } else if ((int) widthCm > 0 && (int) heightCm > 0) {
+                                            //use cm values
+                                            width = widthCm * Units.EMU_PER_CENTIMETER;
+                                            height = heightCm * Units.EMU_PER_CENTIMETER;
+                                        } else {
+                                            //use image dimensions from file
+                                            Dimension imageDimensions = getImageDimension(file);
+                                            width = imageDimensions.getWidth();
+                                            height = imageDimensions.getHeight();
+                                        };
                                         
                                         XWPFRun newRun = xwpfParagraph.createRun();
-                                        newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_JPEG, row + "_image", Units.toEMU(width), Units.toEMU(height));
+                                        newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_JPEG, row + "_image", (int) width, (int) height);
                                         fileInputStream.close();
                                     } catch (IOException | InvalidFormatException e) {
                                         LogUtil.error(getClassName(), e, "Failed to generate word file");
