@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+
 import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.nio.file.Path;
@@ -34,6 +36,8 @@ import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.Document;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFPicture;
+import org.apache.poi.xwpf.usermodel.XWPFPictureData;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
@@ -75,7 +79,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
     @Override
     public String getVersion() {
-        return "8.0.2";
+        return "8.0.3";
     }
 
     @Override
@@ -181,6 +185,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         }
     }
 
+    @SuppressWarnings("null")
     protected void replacePlaceholderInJSON(String text, XWPFDocument xwpfDocument) {
         JsonArray jsonArray = JsonParser.parseString(text).getAsJsonArray();
 
@@ -301,8 +306,49 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         throw new IOException("Not a known image file: " + imgFile.getAbsolutePath());
     }
 
-    protected void replaceImageInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
+    protected void replaceImagePlaceholdersInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
+        for (Map.Entry<String, String> entry : dataParams.entrySet()) {
+            for (XWPFParagraph paragraph : xwpfDocument.getParagraphs()) {
+                for (XWPFRun run : paragraph.getRuns()) {
+                    for (XWPFPicture picture : run.getEmbeddedPictures()) {
+                        String imageDescription = picture.getDescription();
 
+                        // replace if imageDescription contains field name and field value is a picture
+                        if (imageDescription.contains(entry.getKey()) && isImageValue(entry.getValue())) {
+                            try {
+                                // Get replacement file
+                                AppDefinition appDef = AppUtil.getCurrentAppDefinition();
+                                String formDef = getPropertyString("formDefId");
+                                AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
+                                String tableName = appService.getFormTableName(appDef, formDef);
+                                File file = FileUtil.getFile(entry.getValue(), tableName, row);
+
+                                FileInputStream fileInputStream = new FileInputStream(file);
+                                
+                                // overwrite placeholder byte array
+                                XWPFPictureData pictureData = picture.getPictureData();
+                                OutputStream out = pictureData.getPackagePart().getOutputStream();
+
+                                byte[] buffer = new byte[2048];
+                                int length;
+                                while ((length = fileInputStream.read(buffer)) > 0) {
+                                    out.write(buffer, 0, length);
+                                }
+
+                                fileInputStream.close();
+                                out.flush();
+                                out.close();
+                            } catch (IOException e) {
+                                LogUtil.error(getClassName(), e, "Failed to generate word file");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    protected void replaceImageInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
         for (Map.Entry<String, String> entry : dataParams.entrySet()) {
             for (XWPFParagraph paragraph : xwpfDocument.getParagraphs()) {
                 String text = paragraph.getText();
@@ -346,9 +392,6 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                                 width = imageDimensions.getWidth() * Units.EMU_PER_PIXEL;
                                 height = imageDimensions.getHeight() * Units.EMU_PER_PIXEL;
                             };
-
-                            LogUtil.info(this.getClassName(), "width" + width);
-                            LogUtil.info(this.getClassName(), "height" + height);
 
                             XWPFRun newRun = paragraph.createRun();
                             newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", (int) width, (int) height);
@@ -508,7 +551,20 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
             // }
 
             //use regex instead of text.split so matches dont have to be enclosed by whitespaces
-            textArrayList = getAllMatches(text, "\\$\\{([^$\\{\\}]+)\\}", true);
+            String placeHolderRegex = "\\$\\{([^$\\{\\}]+)\\}";
+            textArrayList = getAllMatches(text, placeHolderRegex, true);
+            
+            //extract placeholders from image descriptions
+            for (XWPFParagraph paragraph : apachDoc.getParagraphs()) {
+                for (XWPFRun run : paragraph.getRuns()) {
+                    for (XWPFPicture picture : run.getEmbeddedPictures()) {
+                        String description = picture.getDescription();
+                        if (description != null && !description.isEmpty()) {
+                            textArrayList.addAll(getAllMatches(description, placeHolderRegex, true));
+                        }
+                    }
+                }
+            }
 
             //Perform Matching Operation
             Map<String, String> matchedMap = new HashMap<>();
@@ -554,6 +610,9 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
             replacePlaceholderInTables(matchedMap, apachDoc);
             replaceImageInParagraph(matchedMap, apachDoc, row);
             replaceImageInTable(matchedMap, apachDoc, row);
+
+            //Replace all image placeholders
+            replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, row);
 
             String fileName = getPropertyString("fileName");
             //String fileName = row + ".docx";
@@ -641,10 +700,16 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                         }
                     }
                 }
+
+                //Methods to replace all selected datalist data field with template file placeholder variables respectively
                 replacePlaceholderInParagraphs(matchedMap, apachDoc);
                 replacePlaceholderInTables(matchedMap, apachDoc);
                 replaceImageInParagraph(matchedMap, apachDoc, row);
                 replaceImageInTable(matchedMap, apachDoc, row);
+
+                //Replace all image placeholders
+                replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, row);
+
                 documents.add(apachDoc);
             } catch (Exception e) {
                 LogUtil.error(this.getClassName(), e, e.toString());
