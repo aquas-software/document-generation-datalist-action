@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -20,20 +20,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import java.awt.Dimension;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.FileImageInputStream;
-import javax.imageio.stream.ImageInputStream;
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
-import org.apache.poi.util.Units;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
-import org.apache.poi.xwpf.usermodel.Document;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFPicture;
@@ -277,35 +269,6 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         }
     }
 
-    /**
-     * Gets image dimensions for given file 
-     * @param imgFile image file
-     * @return dimensions of image
-     * @throws IOException if the file is not a known image
-     */
-    public static Dimension getImageDimension(File imgFile) throws IOException {
-        int pos = imgFile.getName().lastIndexOf(".");
-        if (pos == -1)
-            throw new IOException("No extension for file: " + imgFile.getAbsolutePath());
-        String suffix = imgFile.getName().substring(pos + 1);
-        Iterator<ImageReader> iter = ImageIO.getImageReadersBySuffix(suffix);
-        while(iter.hasNext()) {
-            ImageReader reader = iter.next();
-            try {
-                ImageInputStream stream = new FileImageInputStream(imgFile);
-                reader.setInput(stream);
-                int width = reader.getWidth(reader.getMinIndex());
-                int height = reader.getHeight(reader.getMinIndex());
-                return new Dimension(width, height);
-            } catch (IOException e) {
-                LogUtil.error("getImageDimension", e, "Error reading: " + imgFile.getAbsolutePath());
-            } finally {
-                reader.dispose();
-            }
-        }
-        throw new IOException("Not a known image file: " + imgFile.getAbsolutePath());
-    }
-
     protected void replaceImagePlaceholdersInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
         for (Map.Entry<String, String> entry : dataParams.entrySet()) {
             for (XWPFParagraph paragraph : xwpfDocument.getParagraphs()) {
@@ -335,6 +298,8 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                                     out.write(buffer, 0, length);
                                 }
 
+                                //LogUtil.info(getClassName(), "Replaced " + imageDescription + " with " + entry.getValue());
+
                                 fileInputStream.close();
                                 out.flush();
                                 out.close();
@@ -346,126 +311,6 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 }
             }
         }
-    }
-
-    protected void replaceImageInParagraph(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
-        for (Map.Entry<String, String> entry : dataParams.entrySet()) {
-            for (XWPFParagraph paragraph : xwpfDocument.getParagraphs()) {
-                String text = paragraph.getText();
-                if (text != null && !text.isEmpty() && text.contains(entry.getValue())) {
-                    if (isImageValue(text)) {
-                        try {
-                            AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-                            String formDef = getPropertyString("formDefId");
-                            AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
-                            String tableName = appService.getFormTableName(appDef, formDef);
-                            File file = FileUtil.getFile(text, tableName, row);
-                            FileInputStream fileInputStream = new FileInputStream(file);
-                            for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
-                                paragraph.removeRun(i);
-                            }
-                            
-                            double width;
-                            double height;
-
-                            String widthPixelsString = getPropertyString("imageWidthPixels");
-                            String heightPixelsString = getPropertyString("imageHeightPixels");
-                            int widthPixels = Integer.parseInt(0 + widthPixelsString);
-                            int heightPixels = Integer.parseInt(0 + heightPixelsString);
-
-                            String widthCmString = getPropertyString("imageWidthCentimeters").replaceAll(",",".");
-                            String heightCmString = getPropertyString("imageHeightCentimeters").replaceAll(",",".");
-                            double widthCm = Double.parseDouble(0 + widthCmString);
-                            double heightCm = Double.parseDouble(0 + heightCmString);
-
-                            if (widthPixels > 0 && heightPixels > 0) {
-                                //use pixel-values
-                                width = widthPixels * Units.EMU_PER_PIXEL;
-                                height = heightPixels * Units.EMU_PER_PIXEL;
-                            } else if ((int) widthCm > 0 && (int) heightCm > 0) {
-                                //use cm values
-                                width = widthCm * Units.EMU_PER_CENTIMETER;
-                                height = heightCm * Units.EMU_PER_CENTIMETER;
-                            } else {
-                                //use image dimensions from file
-                                Dimension imageDimensions = getImageDimension(file);
-                                width = imageDimensions.getWidth() * Units.EMU_PER_PIXEL;
-                                height = imageDimensions.getHeight() * Units.EMU_PER_PIXEL;
-                            };
-
-                            XWPFRun newRun = paragraph.createRun();
-                            newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_PNG, row + "_image", (int) width, (int) height);
-                            fileInputStream.close();
-                        } catch (IOException | InvalidFormatException e) {
-                            LogUtil.error(getClassName(), e, "Failed to generate word file");
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    protected void replaceImageInTable(Map<String, String> dataParams, XWPFDocument xwpfDocument, String row) {
-        for (Map.Entry<String, String> entry : dataParams.entrySet()) {
-            for (XWPFTable xwpfTable : xwpfDocument.getTables()) {
-                for (XWPFTableRow xwpfTableRow : xwpfTable.getRows()) {
-                    for (XWPFTableCell xwpfTableCell : xwpfTableRow.getTableCells()) {
-                        for (XWPFParagraph xwpfParagraph : xwpfTableCell.getParagraphs()) {
-                            String text = xwpfParagraph.getText();
-                            if (text != null && !text.isEmpty() && text.contains(entry.getValue())) {
-                                if (isImageValue(entry.getValue())) {
-                                    try {
-                                        AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-                                        String formDef = getPropertyString("formDefId");
-                                        AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
-                                        String tableName = appService.getFormTableName(appDef, formDef);
-                                        File file = FileUtil.getFile(entry.getValue(), tableName, row);
-                                        FileInputStream fileInputStream = new FileInputStream(file);
-                                        for (int i = xwpfParagraph.getRuns().size() - 1; i >= 0; i--) {
-                                            xwpfParagraph.removeRun(i);
-                                        }
-                                        double width;
-                                        double height;
-
-                                        String widthPixelsString = getPropertyString("imageWidthPixels");
-                                        String heightPixelsString = getPropertyString("imageHeightPixels");
-                                        int widthPixels = Integer.parseInt(0 + widthPixelsString);
-                                        int heightPixels = Integer.parseInt(0 + heightPixelsString);
-
-                                        String widthCmString = getPropertyString("imageWidthCentimeters").replaceAll(",",".");
-                                        String heightCmString = getPropertyString("imageHeightCentimeters").replaceAll(",",".");
-                                        double widthCm = Double.parseDouble(0 + widthCmString);
-                                        double heightCm = Double.parseDouble(0 + heightCmString);
-
-                                        if (widthPixels > 0 && heightPixels > 0) {
-                                            //use pixel-values
-                                            width = widthPixels * Units.EMU_PER_PIXEL;
-                                            height = heightPixels * Units.EMU_PER_PIXEL;
-                                        } else if ((int) widthCm > 0 && (int) heightCm > 0) {
-                                            //use cm values
-                                            width = widthCm * Units.EMU_PER_CENTIMETER;
-                                            height = heightCm * Units.EMU_PER_CENTIMETER;
-                                        } else {
-                                            //use image dimensions from file
-                                            Dimension imageDimensions = getImageDimension(file);
-                                            width = imageDimensions.getWidth();
-                                            height = imageDimensions.getHeight();
-                                        };
-                                        
-                                        XWPFRun newRun = xwpfParagraph.createRun();
-                                        newRun.addPicture(fileInputStream, Document.PICTURE_TYPE_JPEG, row + "_image", (int) width, (int) height);
-                                        fileInputStream.close();
-                                    } catch (IOException | InvalidFormatException e) {
-                                        LogUtil.error(getClassName(), e, "Failed to generate word file");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
     }
 
     private boolean isImageValue(String value) {
@@ -608,14 +453,14 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
             //Methods to replace all selected datalist data field with template file placeholder variables respectively
             replacePlaceholderInParagraphs(matchedMap, apachDoc);
             replacePlaceholderInTables(matchedMap, apachDoc);
-            replaceImageInParagraph(matchedMap, apachDoc, row);
-            replaceImageInTable(matchedMap, apachDoc, row);
 
             //Replace all image placeholders
             replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, row);
 
             String fileName = getPropertyString("fileName");
-            //String fileName = row + ".docx";
+            if (fileName.isEmpty()) {
+                fileName = tempFile.getName();
+            }
 
             writeResponseSingle(request, response, apachDoc, fileName, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
@@ -628,7 +473,10 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
     protected void generateMultipleFile(HttpServletRequest request, HttpServletResponse response, String[] rows) throws IOException, ServletException {
 
         //ArrayList of XWPFDocument
-        ArrayList<XWPFDocument> documents = new ArrayList<>();
+        //ArrayList<XWPFDocument> documents = new ArrayList<>();
+
+        //Use a map to connect filenames to documents
+        Map<String, XWPFDocument> documentsMap = new LinkedHashMap<>();
 
         for (String row : rows) {
             AppDefinition appDef = AppUtil.getCurrentAppDefinition();
@@ -663,7 +511,20 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 // }
 
                 //use regex instead of text.split so matches dont have to be enclosed by whitespaces
-                textArrayList = getAllMatches(text, "\\$\\{([^$\\{\\}]+)\\}", true);
+                String placeHolderRegex = "\\$\\{([^$\\{\\}]+)\\}";
+                textArrayList = getAllMatches(text, placeHolderRegex, true);
+                
+                //extract placeholders from image descriptions
+                for (XWPFParagraph paragraph : apachDoc.getParagraphs()) {
+                    for (XWPFRun run : paragraph.getRuns()) {
+                        for (XWPFPicture picture : run.getEmbeddedPictures()) {
+                            String description = picture.getDescription();
+                            if (description != null && !description.isEmpty()) {
+                                textArrayList.addAll(getAllMatches(description, placeHolderRegex, true));
+                            }
+                        }
+                    }
+                }
 
                 //Matching Operation
                 Map<String, String> matchedMap = new HashMap<String, String>();
@@ -704,28 +565,66 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                 //Methods to replace all selected datalist data field with template file placeholder variables respectively
                 replacePlaceholderInParagraphs(matchedMap, apachDoc);
                 replacePlaceholderInTables(matchedMap, apachDoc);
-                replaceImageInParagraph(matchedMap, apachDoc, row);
-                replaceImageInTable(matchedMap, apachDoc, row);
 
                 //Replace all image placeholders
                 replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, row);
 
-                documents.add(apachDoc);
+                //Get file name
+                String fileName = getPropertyString("fileName");
+                if (fileName.isEmpty()) {
+                    fileName = tempFile.getName();
+                }
+                //Add extension in case it is missing
+                if (!fileName.toLowerCase().endsWith(".docx")) {
+                    fileName += ".docx";
+                }
+                //if multiple files have the same name, the map will overwrite existing entries. add a counter in that case
+                String uniqueFileName = fileName;
+                int counter = 1;
+                while (documentsMap.containsKey(uniqueFileName)) {
+                    String fileNameWithoutExtension = fileName.substring(0, fileName.length() - 5); // ".docx" = 5 Zeichen
+                    uniqueFileName = fileNameWithoutExtension + "(" + counter + ").docx";
+                    counter++;
+                }
+
+                //Populate map instead of array
+                //documents.add(apachDoc);
+                documentsMap.put(uniqueFileName, apachDoc);
             } catch (Exception e) {
                 LogUtil.error(this.getClassName(), e, e.toString());
             }
         }
-        writeResponseMulti(request, response, documents, rows);
+        writeResponseMulti(request, response, documentsMap);
     }
 
-    protected void writeResponseMulti(HttpServletRequest request, HttpServletResponse response, ArrayList<XWPFDocument> apachDocs, String[] rows) throws IOException, ServletException {
+    //changes signature from (document list + string array) -> map containing filename and documents
+    // protected void writeResponseMulti(HttpServletRequest request, HttpServletResponse response, ArrayList<XWPFDocument> apachDocs, String[] rows) throws IOException, ServletException {
+    //     response.setContentType("application/zip");
+    //     response.setHeader("Content-Disposition", "attachment; filename=WordFiles.zip");
+    //     try ( ZipOutputStream zipOutputStream = new ZipOutputStream(response.getOutputStream())) {
+    //         for (int i = 0; i < apachDocs.size(); i++) {
+    //             ZipEntry zipEntry = new ZipEntry(rows[i] + ".docx");
+    //             zipOutputStream.putNextEntry(zipEntry);
+    //             apachDocs.get(i).write(zipOutputStream);
+    //             zipOutputStream.closeEntry();
+    //         }
+    //         zipOutputStream.flush();
+
+    //     } catch (Exception e) {
+    //         LogUtil.error(this.getClassName(), e, e.toString());
+    //     }
+    // }
+    protected void writeResponseMulti(HttpServletRequest request, HttpServletResponse response, Map<String, XWPFDocument> documentsMap) throws IOException, ServletException {
         response.setContentType("application/zip");
         response.setHeader("Content-Disposition", "attachment; filename=WordFiles.zip");
         try ( ZipOutputStream zipOutputStream = new ZipOutputStream(response.getOutputStream())) {
-            for (int i = 0; i < apachDocs.size(); i++) {
-                ZipEntry zipEntry = new ZipEntry(rows[i] + ".docx");
+            for (Map.Entry<String, XWPFDocument> entry : documentsMap.entrySet()) {
+                String fileName = entry.getKey();
+                XWPFDocument doc = entry.getValue();
+
+                ZipEntry zipEntry = new ZipEntry(fileName);
                 zipOutputStream.putNextEntry(zipEntry);
-                apachDocs.get(i).write(zipOutputStream);
+                doc.write(zipOutputStream);
                 zipOutputStream.closeEntry();
             }
             zipOutputStream.flush();
