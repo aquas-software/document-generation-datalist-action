@@ -27,6 +27,7 @@
                 "name": "fileName",
                 "label": "@@datalist.DocumentGenerationDatalistAction.fileName@@",
                 "type": "textfield",
+                "description": "@@datalist.DocumentGenerationDatalistAction.fileName.desc@@",
                 "required": "False"
             },
             {
