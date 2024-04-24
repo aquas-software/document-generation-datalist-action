@@ -64,6 +64,8 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
     private final static String MESSAGE_PATH = "message/form/DocumentGenerationDatalistAction";
 
+    private String cachedTableName = null;
+
     @Override
     public String getName() {
         return "Document Generation Datalist Action";
@@ -71,7 +73,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
     @Override
     public String getVersion() {
-        return "8.0.4";
+        return "8.1.0";
     }
 
     @Override
@@ -281,7 +283,7 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                             try {
                                 // Get replacement file
                                 AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-                                String formDef = getPropertyString("formDefId");
+                                String formDef = getPropertyString("replacementForm");
                                 AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
                                 String tableName = appService.getFormTableName(appDef, formDef);
                                 File file = FileUtil.getFile(entry.getValue(), tableName, row);
@@ -338,14 +340,43 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
         return table;
     }
 
-    protected File getTempFile() throws IOException {
-        String fileHashVar = getPropertyString("templateFile");
-        String templateFilePath = AppUtil.processHashVariable(fileHashVar, null, null, null);
-        Path filePath = Paths.get(templateFilePath);
-        String fileName = filePath.getFileName().toString();
-        AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-        File file = AppResourceUtil.getFile(appDef.getAppId(), String.valueOf(appDef.getVersion()), fileName);
-        //Validation
+    protected String getTableName(String formDefId) {
+        String tableName = cachedTableName;
+        if (tableName == null) {
+            AppDefinition appDef = AppUtil.getCurrentAppDefinition();
+            if (appDef != null && formDefId != null) {
+                AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
+                tableName = appService.getFormTableName(appDef, formDefId);
+                cachedTableName = tableName;
+            }
+        }
+        return tableName;
+    }
+
+    protected File getTempFile(FormRowSet formRowSet) throws IOException {
+        String fileName;
+        File file;
+
+        if(getPropertyString("useTemplateFileFromListRow").equals("True")) {
+
+            FormRow formRow = formRowSet.get(0);
+
+            String rowid = formRow.get("id").toString();
+            fileName = formRow.get(getPropertyString("templateFileColumn")).toString();
+            String tableName = getTableName(getPropertyString("formDefId"));
+
+            file = FileUtil.getFile(fileName, tableName, rowid);
+
+        } else {
+            String fileHashVar = getPropertyString("templateFile");
+            String templateFilePath = AppUtil.processHashVariable(fileHashVar, null, null, null);
+            Path filePath = Paths.get(templateFilePath);
+            fileName = filePath.getFileName().toString();
+
+            AppDefinition appDef = AppUtil.getCurrentAppDefinition();
+            file = AppResourceUtil.getFile(appDef.getAppId(), String.valueOf(appDef.getVersion()), fileName);
+        }
+
         if (file.exists()) {
             return file;
         } else {
@@ -366,13 +397,19 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
     protected void generateSingleFile(HttpServletRequest request, HttpServletResponse response, String row) {
 
         AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-        String formDef = getPropertyString("formDefId");
         AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
 
+        String formDef = getPropertyString("formDefId");
         FormRowSet formRowSet = appService.loadFormData(appDef.getAppId(), appDef.getVersion().toString(), formDef, row);
 
+        String replacementFormDef = getPropertyString("replacementForm");
+        String replacementRowId = !getPropertyString("replacementRowId").isEmpty()
+                                    ? getPropertyString("replacementRowId") : row;
+        FormRowSet replacementFormRowSet = appService.loadFormData(appDef.getAppId(), appDef.getVersion().toString(), replacementFormDef, replacementRowId);
+
         try {
-            File tempFile = getTempFile();
+
+            File tempFile = getTempFile(formRowSet);
             InputStream fInputStream = new FileInputStream(tempFile);
 
             //Create a XWPFDocument object
@@ -413,9 +450,10 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
             //Perform Matching Operation
             Map<String, String> matchedMap = new HashMap<>();
-            if (formRowSet != null && !formRowSet.isEmpty()) {
+
+            if (replacementFormRowSet != null && !replacementFormRowSet.isEmpty()) {
                 for (String key : textArrayList) {
-                    for (FormRow r : formRowSet) {
+                    for (FormRow r : replacementFormRowSet) {
                         //The keyset of the formrow
                         Set<Object> formSet = r.keySet();
 
@@ -448,14 +486,14 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
                         }
                     }
                 }
-            }
+            }            
 
             //Methods to replace all selected datalist data field with template file placeholder variables respectively
             replacePlaceholderInParagraphs(matchedMap, apachDoc);
             replacePlaceholderInTables(matchedMap, apachDoc);
 
             //Replace all image placeholders
-            replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, row);
+            replaceImagePlaceholdersInParagraph(matchedMap, apachDoc, replacementRowId);
 
             String fileName = getPropertyString("fileName");
             if (fileName.isEmpty()) {
@@ -480,14 +518,20 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
         for (String row : rows) {
             AppDefinition appDef = AppUtil.getCurrentAppDefinition();
-            String formDef = getPropertyString("formDefId");
             AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
+
             //To get whole row of the datalist
+            String formDef = getPropertyString("formDefId");
             FormRowSet formRowSet = appService.loadFormData(appDef.getAppId(), appDef.getVersion().toString(), formDef, row);
+
+            String replacementFormDef = getPropertyString("replacementForm");
+            String replacementRowId = !getPropertyString("replacementRowId").isEmpty()
+                                        ? getPropertyString("replacementRowId") : row;
+            FormRowSet replacementFormRowSet = appService.loadFormData(appDef.getAppId(), appDef.getVersion().toString(), replacementFormDef, replacementRowId);
 
             try {
 
-                File tempFile = getTempFile();
+                File tempFile = getTempFile(formRowSet);
                 InputStream fInputStream = new FileInputStream(tempFile);
 
                 //XWPFDocument 
@@ -528,9 +572,9 @@ public class DocumentGenerationDatalistAction extends DataListActionDefault {
 
                 //Matching Operation
                 Map<String, String> matchedMap = new HashMap<String, String>();
-                if (formRowSet != null && !formRowSet.isEmpty()) {
+                if (replacementFormRowSet != null && !replacementFormRowSet.isEmpty()) {
                     for (String key : textArrayList) {
-                        for (FormRow r : formRowSet) {
+                        for (FormRow r : replacementFormRowSet) {
                             Set<Object> formSet = r.keySet();
                             for (Object formKey : formSet) {
                                 //if text follows format "json[1].jsonKey", translate json array format

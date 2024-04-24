@@ -3,23 +3,54 @@
         "title": "@@datalist.DocumentGenerationDatalistAction.config@@",
         "properties": [
             {
+                "name": "useTemplateFileFromListRow",
+                "label": "@@datalist.DocumentGenerationDatalistAction.useTemplateFileFromRow@@",
+                "description": "@@datalist.DocumentGenerationDatalistAction.useTemplateFileFromRow.desc@@",
+                "type": "selectbox",
+                "options" : [
+                    {"value": "True", "label": "True"},
+                    {"value": "False", "label": "False"}
+                ]
+            },
+            {
                 "name": "templateFile",
                 "label": "@@datalist.DocumentGenerationDatalistAction.templateFile@@",
                 "type": "file",
                 "appPath": "[APP_PATH]",
                 "allowType": ".docx,.doc",
+                "control_field": "useTemplateFileFromListRow",
+                "control_value": "False",
                 "required": "True"
             },
             {
                 "name": "formDefId",
-                "label": "@@datalist.DocumentGenerationDatalistAction.form@@",
+                "label": "@@datalist.DocumentGenerationDatalistAction.templateFileForm@@",
+                "type": "selectbox",
+                "options_ajax": "[CONTEXT_PATH]/web/json/console/app[APP_PATH]/forms/options",
+                "control_field": "useTemplateFileFromListRow",
+                "control_value": "True",
+                "required": "True"
+            },
+            {
+                "name": "templateFileColumn",
+                "label": "@@datalist.DocumentGenerationDatalistAction.templateFileColumn@@",
+                "type": "selectbox",
+                "options_ajax_on_change" : "formDefId",
+                "options_ajax": "[CONTEXT_PATH]/web/json/console/app[APP_PATH]/form/columns/options",
+                "control_field": "useTemplateFileFromListRow",
+                "control_value": "True",
+                "required": "True"
+            },
+            {
+                "name": "replacementForm",
+                "label": "@@datalist.DocumentGenerationDatalistAction.replacementForm@@",
                 "type": "selectbox",
                 "options_ajax": "[CONTEXT_PATH]/web/json/console/app[APP_PATH]/forms/options",
                 "required": "True"
             },
             {
-                "name": "buttonLabel",
-                "label": "@@datalist.DocumentGenerationDatalistAction.buttonLabel@@",
+                "name": "replacementRowId",
+                "label": "@@datalist.DocumentGenerationDatalistAction.replacementRowId@@",
                 "type": "textfield",
                 "required": "True"
             },
@@ -29,6 +60,16 @@
                 "type": "textfield",
                 "description": "@@datalist.DocumentGenerationDatalistAction.fileName.desc@@",
                 "required": "False"
+            },
+            {
+                "label": "@@datalist.DocumentGenerationDatalistAction.uiSettings@@",
+                "type": "header"
+            },
+            {
+                "name": "buttonLabel",
+                "label": "@@datalist.DocumentGenerationDatalistAction.buttonLabel@@",
+                "type": "textfield",
+                "required": "True"
             },
             {
                 "label": "@@datalist.DocumentGenerationDatalistAction.gridCustomisation@@",
